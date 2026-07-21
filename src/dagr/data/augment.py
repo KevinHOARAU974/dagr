@@ -91,7 +91,7 @@ class RandomHFlip(BaseTransform):
     def __init__(self, p: float):
         self.p = p
 
-    def __call__(self, data: Data):
+    def forward(self, data: Data):
         if torch.rand(1) > self.p:
             return data
 
@@ -128,7 +128,7 @@ class Crop(BaseTransform):
         self.max = torch.IntTensor([_scale_and_clip(m, s) for m, s in zip(self.max, size)])
         self.min = torch.IntTensor([_scale_and_clip(m, s) for m, s in zip(self.min, size)])
 
-    def __call__(self, data: Data):
+    def forward(self, data: Data):
         data = _crop_events(data, self.min, self.max)
 
         if hasattr(data, "image"):
@@ -170,7 +170,7 @@ class RandomZoom(BaseTransform):
         self.image = np.zeros((height, width, 3), dtype="uint8")
         self._count = np.zeros((height + 1, width + 1), dtype="float32")
 
-    def __call__(self, data):
+    def forward(self, data):
         zoom = torch.rand(1) * (self.zoom[1] - self.zoom[0]) + self.zoom[0]
         width, height = int(np.ceil(data.width * zoom)), int(np.ceil(data.height * zoom))
         H, W = self.image.shape[:2]
@@ -215,7 +215,7 @@ class RandomCrop(BaseTransform):
         self.size = torch.IntTensor([_scale_and_clip(s, ss) for s, ss in zip(self.size, size)])
         self.left_max = size - self.size
 
-    def __call__(self, data: Data):
+    def forward(self, data: Data):
         if torch.rand(1) > self.p:
             return data
 
@@ -259,7 +259,7 @@ class RandomTranslate(BaseTransform):
         bg[py:py + image.shape[0], px:px + image.shape[1]] = image
         return bg
 
-    def __call__(self, data: Data):
+    def forward(self, data: Data):
         move_px = (self.size * (torch.rand(len(self.size)) * 2 - 1)).to(torch.int16)
         data.pos = data.pos + move_px
 

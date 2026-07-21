@@ -1,5 +1,5 @@
 path: "/data/storage/daniel/aegnn"
-output_directory: "/data/storage/daniel/aegnn/logs"
+output_directory: "test_dagr"
 pooling_dim_at_output: 5x7
 
 task: detection
@@ -11,7 +11,7 @@ time_window_us: 1000000
 max_neighbors: 16
 n_nodes: 50000
 
-batch_size: 64
+batch_size: 4
 
 activation: relu
 edge_attr_dim: 2
@@ -33,4 +33,4 @@ aug_trans: 0.1
 aug_p_flip: 0
 aug_zoom: 1
 l_r: 0.001
-tot_num_epochs: 801
+tot_num_epochs: 1
