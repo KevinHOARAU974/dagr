@@ -221,6 +221,8 @@ if __name__ == '__main__':
 
     print("starting to train")
     for epoch in range(start_epoch, args.tot_num_epochs):
+
+        print(f"epoch n°: {epoch}")
         train(train_loader, model, ema, lr_scheduler, optimizer, args, run_name=wandb.run.name)
         checkpointer.checkpoint(epoch, name=f"last_model")
 
