@@ -142,6 +142,14 @@ if __name__ == '__main__':
     
     args.output_directory = set_up_logging_directory(args.dataset, args.task, args.output_directory, exp_name=args.exp_name, wandb_run_id=wandb_run_id)
 
+    wandb.define_metric("epoch")
+
+    for split in ("validation", "test"):
+        wandb.define_metric(
+            f"{split}/metric/*",
+            step_metric="epoch",
+        )
+
     log_hparams(args)
 
     augmentations = Augmentations(args)
@@ -153,14 +161,19 @@ if __name__ == '__main__':
     dataset_path = args.dataset_directory / args.dataset
 
     train_dataset = NCaltech101(dataset_path, "training", augmentations.transform_training, num_events=args.n_nodes)
-    test_dataset = NCaltech101(dataset_path, "validation", augmentations.transform_testing, num_events=args.n_nodes)
+    val_dataset = NCaltech101(dataset_path, "validation", augmentations.transform_testing, num_events=args.n_nodes)
+    test_dataset = NCaltech101(dataset_path, "test", augmentations.transform_testing, num_events=args.n_nodes)
 
 
     train_loader = DataLoader(train_dataset, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=True, num_workers=5, drop_last=True)
     num_iters_per_epoch = len(train_loader)
 
-    sampler = np.random.permutation(np.arange(len(test_dataset)))
+    sampler = np.random.permutation(np.arange(len(val_dataset)))
+    val_loader = DataLoader(val_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
+
     test_loader = DataLoader(test_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
+
+
 
     # wandb.config.update({
     #     'output_directory': output_directory
@@ -203,11 +216,8 @@ if __name__ == '__main__':
         print(f"Resume from checkpoint at epoch {start_epoch}")
 
     with torch.no_grad():
-        mapcalc = run_test(test_loader, ema.ema, dry_run_steps=2, dataset=args.dataset)
+        mapcalc = run_test(val_loader, ema.ema, dry_run_steps=2, dataset=args.dataset)
         mapcalc.compute()
-
-    wandb.define_metric("epoch")
-    wandb.define_metric("validation/*", step_metric="epoch")
 
     print("starting to train")
     for epoch in range(start_epoch, args.tot_num_epochs):
@@ -218,7 +228,30 @@ if __name__ == '__main__':
             continue
 
         with torch.no_grad():
+            mapcalc = run_test(val_loader, ema.ema, dataset=args.dataset)
+            metrics = mapcalc.compute()
+            checkpointer.process(metrics, epoch, "validation")
+
+    print("End of training")
+
+    print("Starting to test")
+
+    best_checkpoint_path = checkpointer.search_for_checkpoint(Path(args.output_directory), best= True)
+
+    if best_checkpoint_path is None:
+        raise FileExistsError(
+            f"No best checkpoint found in {args.output_directory}"
+        )
+
+    best_epoch = checkpointer.restore_checkpoint(best_checkpoint_path)
+
+    print(
+        f"Running final test with checkpoint {best_checkpoint_path.name} from {best_epoch}"
+    )
+
+    with torch.no_grad():
             mapcalc = run_test(test_loader, ema.ema, dataset=args.dataset)
             metrics = mapcalc.compute()
-            checkpointer.process(metrics, epoch)
+            checkpointer.process(metrics, epoch, "test")
 
+    wandb.finish()

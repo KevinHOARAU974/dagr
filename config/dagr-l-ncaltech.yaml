@@ -33,7 +33,7 @@ aug_trans: 0.1
 aug_p_flip: 0
 aug_zoom: 1
 l_r: 0.001
-tot_num_epochs: 2
+tot_num_epochs: 1
 
 resume: none
 # resume_directory: logs/ncaltech101/detection/2ynyx7zr

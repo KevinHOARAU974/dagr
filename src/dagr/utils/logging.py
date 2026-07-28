@@ -121,9 +121,9 @@ class Checkpointer:
 
         torch.save(checkpoint, self.output_directory / f"{name}.pth")
 
-    def process(self, data: Dict[str, float], epoch: int):
+    def process(self, data: Dict[str, float], epoch: int, split="validation"):
         mAP = data['mAP']
-        data = {f"validation/metric/{k}": v for k, v in data.items()}
+        data = {f"{split}/metric/{k}": v for k, v in data.items()}
         data['epoch'] = epoch
         wandb.log(data)
 
