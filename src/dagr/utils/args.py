@@ -2,6 +2,7 @@ import argparse
 import yaml
 
 from pathlib import Path
+from dagr.utils.logging import ResumeMode
 
 
 def BASE_FLAGS():
@@ -49,6 +50,9 @@ def BASE_FLAGS():
 
     parser.add_argument('--aug_p_flip', default=argparse.SUPPRESS, type=float)
 
+    parser.add_argument('--resume', choices=[mode.value for mode in ResumeMode], default=argparse.SUPPRESS, help="Checkpoint resume strategy")
+    parser.add_argument('--resume_directory', default=argparse.SUPPRESS, type=str, help='Checkpoint resume directory')
+
     return parser
 
 def FLAGS():
@@ -73,6 +77,8 @@ def FLAGS():
 
     args.dataset_directory = Path(args.dataset_directory)
     args.output_directory = Path(args.output_directory)
+
+
 
     if "checkpoint" in args:
         args.checkpoint = Path(args.checkpoint)

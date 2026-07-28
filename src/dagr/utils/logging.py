@@ -7,8 +7,14 @@ from torch_geometric.data import Batch
 from pathlib import PosixPath
 from pprint import pprint
 from pathlib import Path
+from enum import Enum
 
 from torch_geometric.data import Data
+
+class ResumeMode(str,Enum):
+    NONE = "none"
+    LAST = "last"
+    BEST = "best"
 
 
 class Checkpointer:
@@ -22,11 +28,22 @@ class Checkpointer:
         self.output_directory = output_directory
         self.args = args
 
-    def restore_if_existing(self, folder, resume_from_best=False):
-        checkpoint = self.search_for_checkpoint(folder, best=resume_from_best)
+    def restore(self, folder: Path, mode: ResumeMode = ResumeMode.NONE):
+
+        if mode == ResumeMode.NONE:
+
+            print("Starting training from scratch")
+            return None
+        
+        checkpoint = self.search_for_checkpoint(folder, best = mode==ResumeMode.BEST)
+
+        if checkpoint is None:
+            print(f"No checkpoint found in {folder}. Starting from scratch")
+            return None
+
         if checkpoint is not None:
             print(f"Found existing checkpoint at {checkpoint}, resuming...")
-            self.restore_checkpoint(folder, best=resume_from_best)
+            return checkpoint
 
     def mAP_from_checkpoint_name(self, checkpoint_name: Path):
         return float(str(checkpoint_name).split("_")[-1].split(".pth")[0])
@@ -47,16 +64,30 @@ class Checkpointer:
         checkpoints = sorted(checkpoints, key=lambda x: self.mAP_from_checkpoint_name(x.name))
         return checkpoints[-1]
 
+    def resolve_checkpoint(self, folder: Path, mode: ResumeMode):
+        if mode == ResumeMode.NONE:
+            return None
+
+        return self.search_for_checkpoint(folder, best=mode == ResumeMode.BEST)
+
+    def read_checkpoint_metadata(self, path: Path):
+
+        checkpoint = torch.load(path, map_location='cpu', weights_only=False)
+
+        return {
+            "wandb_run_id": checkpoint.get("wandb_run_id"),
+            "epoch": checkpoint.get("epoch", -1),
+            "mAP_max": checkpoint.get("mAP_max", 0.0)
+        }
 
     def restore_if_not_none(self, target, source):
         if target is not None:
             target.load_state_dict(source)
 
-    def restore_checkpoint(self, checkpoint_directory, best=False):
-        path = self.search_for_checkpoint(checkpoint_directory, best)
-        assert path is not None, "No checkpoint found in {}".format(checkpoint_directory)
-        print("Restoring checkpoint from {}".format(path))
-        checkpoint = torch.load(path)
+    def restore_checkpoint(self, path):
+
+        print(f"Restoring checkpoint from {path}")
+        checkpoint = torch.load(path, map_location='cpu', weights_only=False)
 
         checkpoint['model'] = self.fix_checkpoint(checkpoint['model'])
         checkpoint['ema'] = self.fix_checkpoint(checkpoint['ema'])
@@ -64,6 +95,7 @@ class Checkpointer:
         if self.ema is not None:
             self.ema.ema.load_state_dict(checkpoint.get('ema', checkpoint['model']))
             self.ema.updates = checkpoint.get('ema_updates', 0)
+
         self.restore_if_not_none(self.model, checkpoint['model'])
         self.restore_if_not_none(self.optimizer, checkpoint['optimizer'])
         self.restore_if_not_none(self.scheduler, checkpoint['scheduler'])
@@ -72,7 +104,7 @@ class Checkpointer:
     def fix_checkpoint(self, state_dict):
         return state_dict
 
-    def checkpoint(self, epoch: int, name: str=""):
+    def checkpoint(self, epoch: int, name: str="", mAP: Optional[float] = None):
         self.output_directory.mkdir(exist_ok=True, parents=True)
 
         checkpoint = {
@@ -82,7 +114,9 @@ class Checkpointer:
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict(),
             "epoch": epoch,
-            "args": self.args
+            "mAP_max": self.mAP_max if mAP is None else mAP,
+            "wandb_run_id": wandb.run.id,
+            "args": vars(self.args).copy()
         }
 
         torch.save(checkpoint, self.output_directory / f"{name}.pth")
@@ -94,27 +128,30 @@ class Checkpointer:
         wandb.log(data)
 
         if mAP > self.mAP_max:
-            self.checkpoint(epoch, name=f"best_model_mAP_{mAP}")
+            self.checkpoint(epoch, name=f"best_model_mAP_{mAP}", mAP=mAP)
             self.mAP_max = mAP
 
 
-def set_up_logging_directory(dataset, task, output_directory, exp_name="temp"):
+def set_up_logging_directory(dataset, task, output_directory, exp_name="temp", wandb_run_id = None):
     project = f"low_latency-{dataset}-{task}"
 
-    output_directory = output_directory / dataset / task
-    output_directory.mkdir(parents=True, exist_ok=True)
-    wandb.init(project=project, id=exp_name, save_code=True, dir=str(output_directory))
+    base_directory = output_directory / dataset / task
+    base_directory.mkdir(parents=True, exist_ok=True)
 
-    name = wandb.run.id
-    output_directory = output_directory / name
-    output_directory.mkdir(parents=True, exist_ok=True)
+    if wandb_run_id is None:
+        run = wandb.init(project=project, name=exp_name, save_code=True, dir=str(base_directory))
+    else:
+        run = wandb.init(project=project, id=wandb_run_id, resume='must', save_code=True, dir=str(base_directory))
+        
+    run_directory = base_directory / run.id
+    run_directory.mkdir(parents=True, exist_ok=True)
 
-    return output_directory
+    return run_directory
 
 def log_hparams(args):
     hparams = {k: str(v) if type(v) is PosixPath else v for k, v in vars(args).items()}
     pprint(hparams)
-    wandb.log(hparams)
+    wandb.config.update(hparams,  allow_val_change= ResumeMode(args.resume) != ResumeMode.NONE)
 
 def log_bboxes(data: Batch,
                targets: List[Dict[str, torch.Tensor]],

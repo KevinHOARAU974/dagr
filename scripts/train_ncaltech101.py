@@ -8,9 +8,9 @@ import wandb
 from pathlib import Path
 import argparse
 
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
-from dagr.utils.logging import Checkpointer, set_up_logging_directory, log_hparams
+from dagr.utils.logging import Checkpointer, set_up_logging_directory, log_hparams, ResumeMode
 from dagr.utils.buffers import DetectionBuffer
 from dagr.utils.args import FLAGS
 from dagr.utils.learning_rate_scheduler import LRSchedule
@@ -113,10 +113,41 @@ if __name__ == '__main__':
 
     args = FLAGS()
 
-    output_directory = set_up_logging_directory(args.dataset, args.task, args.output_directory, exp_name=args.exp_name)
+    resume_mode = ResumeMode(args.resume)
+
+    checkpoint_path = None
+    wandb_run_id = None
+
+    #Resume 
+    if resume_mode != ResumeMode.NONE:
+        if args.resume_directory is None:
+            raise ValueError("--resume-directory is required when resuming training")
+
+        temporary_checkpointer = Checkpointer()
+
+        checkpoint_path = temporary_checkpointer.search_for_checkpoint(Path(args.resume_directory), best=resume_mode == ResumeMode.BEST)
+
+        if checkpoint_path is None:
+            raise FileExistsError(f"No checkpoint found in {args.resume_directory}")
+
+        checkpoint_metadata = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+
+        wandb_run_id = checkpoint_metadata.get("wandb_run_id")
+
+        if wandb_run_id is None:
+            raise KeyError(
+                f"Checkpoint {checkpoint_path} does not contain 'wandb_run_id"
+            )
+
+    
+    args.output_directory = set_up_logging_directory(args.dataset, args.task, args.output_directory, exp_name=args.exp_name, wandb_run_id=wandb_run_id)
+
     log_hparams(args)
 
     augmentations = Augmentations(args)
+
+    #log config on wandb
+    wandb.config.update(vars(args), allow_val_change= resume_mode != ResumeMode.NONE)
 
     print("init datasets")
     dataset_path = args.dataset_directory / args.dataset
@@ -125,11 +156,15 @@ if __name__ == '__main__':
     test_dataset = NCaltech101(dataset_path, "validation", augmentations.transform_testing, num_events=args.n_nodes)
 
 
-    train_loader = DataLoader(train_dataset, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=True, num_workers=4, drop_last=True)
+    train_loader = DataLoader(train_dataset, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=True, num_workers=5, drop_last=True)
     num_iters_per_epoch = len(train_loader)
 
     sampler = np.random.permutation(np.arange(len(test_dataset)))
-    test_loader = DataLoader(test_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=4, drop_last=True)
+    test_loader = DataLoader(test_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
+
+    # wandb.config.update({
+    #     'output_directory': output_directory
+    # })
 
     print("init net")
     # load a dummy sample to get height, width
@@ -137,6 +172,10 @@ if __name__ == '__main__':
 
     num_params = sum([np.prod(p.size()) for p in model.parameters()])
     print(f"Training with {num_params} number of parameters.")
+
+    wandb.config.update({
+        'num_params': num_params
+    })
 
     model = model.cuda()
     ema = ModelEMA(model)
@@ -151,21 +190,24 @@ if __name__ == '__main__':
 
     lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lr_func)
 
-    checkpointer = Checkpointer(output_directory=output_directory,
+    checkpointer = Checkpointer(output_directory=args.output_directory,
                                 model=model, optimizer=optimizer,
                                 scheduler=lr_scheduler, ema=ema,
                                 args=args)
 
-    start_epoch = checkpointer.restore_if_existing(output_directory, resume_from_best=False)
+    checkpoint_path = checkpointer.restore(args.output_directory, mode=ResumeMode(args.resume))
 
     start_epoch = 0
-    if "resume_checkpoint" in args:
-        start_epoch = checkpointer.restore_checkpoint(args.resume_checkpoint, best=False)
+    if ResumeMode(args.resume) != ResumeMode.NONE and checkpoint_path is not None:
+        start_epoch = checkpointer.restore_checkpoint(checkpoint_path) + 1
         print(f"Resume from checkpoint at epoch {start_epoch}")
 
     with torch.no_grad():
         mapcalc = run_test(test_loader, ema.ema, dry_run_steps=2, dataset=args.dataset)
         mapcalc.compute()
+
+    wandb.define_metric("epoch")
+    wandb.define_metric("validation/*", step_metric="epoch")
 
     print("starting to train")
     for epoch in range(start_epoch, args.tot_num_epochs):
