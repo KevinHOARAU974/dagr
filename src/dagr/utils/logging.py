@@ -28,6 +28,8 @@ class Checkpointer:
         self.output_directory = output_directory
         self.args = args
 
+        self.best_checkpoint_path = None
+
     def restore(self, folder: Path, mode: ResumeMode = ResumeMode.NONE):
 
         if mode == ResumeMode.NONE:
@@ -104,8 +106,15 @@ class Checkpointer:
     def fix_checkpoint(self, state_dict):
         return state_dict
 
+    def remove_best_checkpoint(self): 
+        if self.best_checkpoint_path is not None:
+            self.best_checkpoint_path.unlink(missing_ok=True)
+
     def checkpoint(self, epoch: int, name: str="", mAP: Optional[float] = None):
         self.output_directory.mkdir(exist_ok=True, parents=True)
+
+        if "best" in name:
+                self.remove_best_checkpoint()
 
         checkpoint = {
             "ema": self.ema.ema.state_dict(),
@@ -120,6 +129,9 @@ class Checkpointer:
         }
 
         torch.save(checkpoint, self.output_directory / f"{name}.pth")
+
+        if "best" in name:
+            self.best_checkpoint_path = Path(self.output_directory / f"{name}.pth")
 
     def process(self, data: Dict[str, float], epoch: int, split="validation"):
         mAP = data['mAP']
