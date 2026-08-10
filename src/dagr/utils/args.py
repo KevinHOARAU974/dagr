@@ -59,7 +59,7 @@ def FLAGS():
     parser = BASE_FLAGS()
 
     #seed
-    parser.add_argument('--seed', default=42, type=int)
+    parser.add_argument('--seed', default=argparse.SUPPRESS, type=int)
 
     # learning params
     parser.add_argument('--aug_trans', default=argparse.SUPPRESS, type=float)
