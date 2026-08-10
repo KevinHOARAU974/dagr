@@ -104,14 +104,14 @@ if __name__ == '__main__':
     import random
     import numpy as np
 
-    seed = 42
+    args = FLAGS()
+
+    seed = args.seed
     torch_geometric.seed.seed_everything(seed)
     torch.random.manual_seed(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-
-    args = FLAGS()
 
     resume_mode = ResumeMode(args.resume)
 

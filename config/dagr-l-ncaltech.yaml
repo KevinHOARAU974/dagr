@@ -1,5 +1,7 @@
 # path: "/data/storage/daniel/aegnn"
 # output_directory: "test_dagr"
+seed: 12345
+
 pooling_dim_at_output: 5x7
 
 task: detection
