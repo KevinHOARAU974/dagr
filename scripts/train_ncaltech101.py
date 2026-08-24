@@ -50,7 +50,7 @@ def train(loader: DataLoader,
 
     for i, data in enumerate(tqdm.tqdm(loader, desc=f"Training {run_name}")):
         data = data.cuda(non_blocking=True)
-        data = format_data(data)
+        data = format_data(data) #Normalize data
 
         optimizer.zero_grad(set_to_none=True)
 
@@ -172,12 +172,6 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
 
     test_loader = DataLoader(test_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
-
-
-
-    # wandb.config.update({
-    #     'output_directory': output_directory
-    # })
 
     print("init net")
     # load a dummy sample to get height, width
