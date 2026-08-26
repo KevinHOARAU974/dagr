@@ -202,39 +202,90 @@ class RandomCrop(BaseTransform):
 
     Args:
         size (List[float]): crop size per dimension
-        dim (List[int]): dimension of the crop, default = [0,1]
-        p float: only to random crop with a probability of p
+        dim (List[int]): dimensions of the crop, default = [0,1]
+        p (float): probability of applying the crop
+        max_trials (int): maximum number of crop resampling attempts
+        min_events (int): minimum number of events kept after cropping
     """
-    def __init__(self, size: List[float] = [0.75, 0.75], dim: List[int]=[0,1], p=0.5):
+
+    def __init__(
+        self,
+        size=[0.75, 0.75],
+        dim=[0, 1],
+        p=0.5,
+        max_trials=10,
+        min_events=1,
+    ):
         self.size = torch.as_tensor(size)
         self.dim = dim
         self.p = p
+        self.max_trials = max_trials
+        self.min_events = min_events
 
     def init(self, height, width):
         size = torch.IntTensor([width, height])
-        self.size = torch.IntTensor([_scale_and_clip(s, ss) for s, ss in zip(self.size, size)])
+        self.size = torch.IntTensor(
+            [_scale_and_clip(s, ss) for s, ss in zip(self.size, size)]
+        )
         self.left_max = size - self.size
 
     def forward(self, data: Data):
         if torch.rand(1) > self.p:
             return data
 
-        left = (torch.rand(len(self.dim)) * self.left_max).to(torch.int16)
-        right = left + self.size
+        original = data
 
-        data = _crop_events(data, left, right)
+        for _ in range(self.max_trials):
+            left = (
+                torch.rand(len(self.dim)) * self.left_max
+            ).to(torch.int16)
 
-        if hasattr(data, "image"):
-            data.image = _crop_image(data.image, left, right)
+            right = left + self.size
 
-        # crop bbox to new crop dimension
-        if hasattr(data, "bbox"):
-            data.bbox = _crop_bbox(data.bbox, left, right)
+            cropped = _crop_events(
+                original.clone(),
+                left,
+                right,
+            )
 
-        if hasattr(data, "bbox0"):
-            data.bbox0 = _crop_bbox(data.bbox0, left, right)
+            # Reject empty / nearly empty crops
+            if cropped.num_nodes < self.min_events:
+                continue
 
-        return data
+            if hasattr(cropped, "bbox"):
+                cropped.bbox = _crop_bbox(
+                    cropped.bbox,
+                    left,
+                    right,
+                )
+
+                # Reject degenerate boxes
+                valid_bbox = (
+                    (cropped.bbox[:, 2] > 0)
+                    & (cropped.bbox[:, 3] > 0)
+                )
+
+                if not valid_bbox.all():
+                    continue
+
+            if hasattr(cropped, "bbox0"):
+                cropped.bbox0 = _crop_bbox(
+                    cropped.bbox0,
+                    left,
+                    right,
+                )
+
+            if hasattr(cropped, "image"):
+                cropped.image = _crop_image(
+                    cropped.image,
+                    left,
+                    right,
+                )
+
+            return cropped
+
+        # No valid crop found
+        return original
 
 
 class RandomTranslate(BaseTransform):
@@ -287,7 +338,7 @@ class Augmentations:
     def __init__(self, args):
         self.transform_training = T.Compose([
             RandomHFlip(p=args.aug_p_flip),
-            RandomCrop([0.75, 0.75], p=0.2),
+            RandomCrop([0.75, 0.75], p=0.2,max_trials=10, min_events=100),
             RandomZoom(zoom=[1, args.aug_zoom], subsample=True),
             RandomTranslate([args.aug_trans, args.aug_trans, 0]),
             Crop([0, 0], [1, 1]),
