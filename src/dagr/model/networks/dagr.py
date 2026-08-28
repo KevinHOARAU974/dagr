@@ -136,6 +136,14 @@ class GNNHead(YOLOXHead):
     ):
         YOLOXHead.__init__(self, num_classes, args.yolo_stem_width, strides, in_channels, act, depthwise)
 
+        #Remove unused layers inheritate from YOLOX
+        del self.cls_convs
+        del self.reg_convs
+        del self.cls_preds
+        del self.reg_preds
+        del self.obj_preds
+        del self.stems
+
         self.pretrain_cnn = pretrain_cnn
         self.num_scales = args.num_scales
         self.use_image = args.use_image
