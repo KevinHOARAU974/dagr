@@ -21,7 +21,7 @@ def compute_pooling_at_each_layer(pooling_dim_at_output, num_layers):
     pooling_base = torch.tensor([1.0 / px, 1.0 / py, 1.0 / 1])
     poolings = []
     for i in range(num_layers):
-        pooling = pooling_base / 2 ** (3 - i)
+        pooling = pooling_base / 2 ** (num_layers - 1 - i)
         pooling[-1] = 1
         poolings.append(pooling)
     poolings = torch.stack(poolings)
