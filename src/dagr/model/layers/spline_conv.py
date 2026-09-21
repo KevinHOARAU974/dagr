@@ -50,8 +50,19 @@ class MySplineConv(SplineConv):
         if self.reproducible:
             # first check we already computed the adjacency matrix
             if not hasattr(data, "adj_t"):
+
+                pooling = None
+
+                if hasattr(data, "pooling"):
+                    pooling = data.pooling
+                    del data.pooling
+                    
                 data.edge_attr = data.edge_attr[:,:self.dim]
                 data = self.to_sparse_tensor(data)
+
+                if pooling is not None:
+                    data.pooling = pooling
+
             data.x = self._forward(data.x,
                                   edge_index=data.adj_t)
         else:
