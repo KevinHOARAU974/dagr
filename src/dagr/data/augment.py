@@ -338,7 +338,7 @@ class Augmentations:
     def __init__(self, args):
         self.transform_training = T.Compose([
             RandomHFlip(p=args.aug_p_flip),
-            RandomCrop([0.75, 0.75], p=0.2,max_trials=10, min_events=100),
+            RandomCrop([0.75, 0.75], p=0.2,max_trials=10, min_events=10000),
             RandomZoom(zoom=[1, args.aug_zoom], subsample=True),
             RandomTranslate([args.aug_trans, args.aug_trans, 0]),
             Crop([0, 0], [1, 1]),
