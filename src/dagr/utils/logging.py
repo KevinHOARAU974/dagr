@@ -101,6 +101,23 @@ class Checkpointer:
         self.restore_if_not_none(self.model, checkpoint['model'])
         self.restore_if_not_none(self.optimizer, checkpoint['optimizer'])
         self.restore_if_not_none(self.scheduler, checkpoint['scheduler'])
+
+        self.mAP_max = checkpoint.get("mAP_max", 0.0)
+
+
+        best_path = self.search_for_checkpoint(
+            self.output_directory,
+            best=True
+        )
+
+        if best_path is not None:
+            self.best_checkpoint_path = best_path
+            self.mAP_max = self.mAP_from_checkpoint_name(best_path.name)
+        else:
+            self.best_checkpoint_path = None
+            self.mAP_max = checkpoint.get("mAP_max", 0.0)
+
+
         return checkpoint['epoch']
 
     def fix_checkpoint(self, state_dict):
@@ -139,7 +156,7 @@ class Checkpointer:
         data['epoch'] = epoch
         wandb.log(data)
 
-        if mAP > self.mAP_max:
+        if split == "validation" and mAP > self.mAP_max:
             self.checkpoint(epoch, name=f"best_model_mAP_{mAP}", mAP=mAP)
             self.mAP_max = mAP
 
