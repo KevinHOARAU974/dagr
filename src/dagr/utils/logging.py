@@ -95,7 +95,7 @@ class Checkpointer:
         checkpoint['ema'] = self.fix_checkpoint(checkpoint['ema'])
 
         if self.ema is not None:
-            self.ema.ema.load_state_dict(checkpoint.get('ema', checkpoint['model']))
+            self.ema.ema.load_state_dict(checkpoint.get('ema', checkpoint['model']), strict=False)
             self.ema.updates = checkpoint.get('ema_updates', 0)
 
         self.restore_if_not_none(self.model, checkpoint['model'])

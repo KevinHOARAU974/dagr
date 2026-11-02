@@ -168,10 +168,10 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_dataset, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=True, num_workers=5, drop_last=True)
     num_iters_per_epoch = len(train_loader)
 
-    sampler = np.random.permutation(np.arange(len(val_dataset)))
-    val_loader = DataLoader(val_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
+    # sampler = np.random.permutation(np.arange(len(val_dataset)))
+    val_loader = DataLoader(val_dataset, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
 
-    test_loader = DataLoader(test_dataset, sampler=sampler, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=True)
+    test_loader = DataLoader(test_dataset, follow_batch=['bbox', 'bbox0'], batch_size=args.batch_size, shuffle=False, num_workers=5, drop_last=False)
 
     print("init net")
     # load a dummy sample to get height, width
@@ -180,9 +180,10 @@ if __name__ == '__main__':
     num_params = sum([np.prod(p.size()) for p in model.parameters()])
     print(f"Training with {num_params} number of parameters.")
 
-    wandb.config.update({
-        'num_params': num_params
-    })
+    if resume_mode == ResumeMode.NONE:
+        wandb.config.update({
+            'num_params': num_params
+        })
 
     model = model.cuda()
     ema = ModelEMA(model)
@@ -248,6 +249,6 @@ if __name__ == '__main__':
     with torch.no_grad():
             mapcalc = run_test(test_loader, ema.ema, dataset=args.dataset)
             metrics = mapcalc.compute()
-            checkpointer.process(metrics, epoch, "test")
+            checkpointer.process(metrics, args.tot_num_epochs-1, "test")
 
     wandb.finish()

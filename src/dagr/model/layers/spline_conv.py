@@ -20,9 +20,15 @@ class MySplineConv(SplineConv):
 
         ry = ry or rx
         My = My or Mx
-        self.attr_remapping_matrix = torch.Tensor([[2 * Mx * width,               0, - Mx * width + rx],
-                                                   [             0, 2 * My * height, - My * height + ry]])
-
+        self.attr_remapping_matrix = torch.tensor(
+            [
+                [2 * Mx * width, 0, -Mx * width + rx],
+                [0, 2 * My * height, -My * height + ry]
+            ],
+            device=self.weight.device,
+            dtype=self.weight.dtype
+        )
+        
         # generate all possible dx, dy
         dxy = torch.stack(torch.meshgrid(torch.arange(-rx, rx+1), torch.arange(-ry, ry+1))).float()
         dxy[0] = dxy[0] / (2 * Mx * width) + 0.5
